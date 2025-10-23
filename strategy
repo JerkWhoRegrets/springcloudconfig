@@ -1,0 +1,264 @@
+import java.util.*;
+
+// ============================================================================
+// Strategy Interface
+// ============================================================================
+interface PaymentStrategy {
+    void pay(double amount);
+    String name();
+}
+
+// ============================================================================
+// Concrete Strategies
+// ============================================================================
+
+class CreditCardPayment implements PaymentStrategy {
+    private String cardNumber;
+    private String cardHolder;
+    private String cvv;
+    private String expirationDate;
+
+    CreditCardPayment(String cardNumber, String cardHolder, String cvv, String expirationDate) {
+        this.cardNumber = cardNumber;
+        this.cardHolder = cardHolder;
+        this.cvv = cvv;
+        this.expirationDate = expirationDate;
+    }
+
+    @Override
+    public void pay(double amount) {
+        System.out.println("Processing Credit Card payment of $" + amount);
+        System.out.println("Cardholder: " + cardHolder);
+        System.out.println("Payment Successful!");
+    }
+
+    @Override
+    public String name() {
+        return "Credit Card";
+    }
+}
+
+class PayPalPayment implements PaymentStrategy {
+    private String email;
+    private String password;
+
+    PayPalPayment(String email, String password) {
+        this.email = email;
+        this.password = password;
+    }
+
+    @Override
+    public void pay(double amount) {
+        System.out.println("Processing PayPal payment of $" + amount + " for " + email);
+        System.out.println("Authentication Verified...");
+        System.out.println("Payment Successful!");
+    }
+
+    @Override
+    public String name() {
+        return "PayPal";
+    }
+}
+
+class CryptoPayment implements PaymentStrategy {
+    private String walletId;
+
+    CryptoPayment(String walletId) {
+        this.walletId = walletId;
+    }
+
+    @Override
+    public void pay(double amount) {
+        System.out.println("Processing Crypto Payment of $" + amount);
+        System.out.println("Using Wallet ID: " + walletId);
+        System.out.println("Payment Successful (Blockchain Confirmed!)");
+    }
+
+    @Override
+    public String name() {
+        return "Crypto";
+    }
+}
+
+// ============================================================================
+// Context
+// ============================================================================
+class ShoppingCart {
+    private List<String> items = new ArrayList<>();
+    private List<Double> prices = new ArrayList<>();
+    private PaymentStrategy paymentStrategy;
+
+    void addItem(String item, double price) {
+        items.add(item);
+        prices.add(price);
+        System.out.println(item + " added to cart. Price: $" + price);
+    }
+
+    double total() {
+        return prices.stream().mapToDouble(Double::doubleValue).sum();
+    }
+
+    void choosePaymentStrategy(PaymentStrategy strategy) {
+        this.paymentStrategy = strategy;
+        System.out.println("Selected payment method: " + strategy.name());
+    }
+
+    void checkout() {
+        if (paymentStrategy == null) {
+            System.out.println("Please select a payment method before checkout.");
+            return;
+        }
+        double amount = total();
+        if (amount <= 0) {
+            System.out.println("Cart is empty!");
+            return;
+        }
+        System.out.println("\nFinalizing checkout...");
+        paymentStrategy.pay(amount);
+        System.out.println("Thank you for your purchase!");
+        clear();
+    }
+
+    void clear() {
+        items.clear();
+        prices.clear();
+    }
+
+    void viewCart() {
+        System.out.println("\n=== Your Cart ===");
+        if (items.isEmpty()) {
+            System.out.println("Cart is empty.");
+            return;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            System.out.println((i + 1) + ". " + items.get(i) + " - $" + prices.get(i));
+        }
+        System.out.println("Total: $" + total());
+    }
+}
+
+// ============================================================================
+// Input Helper
+// ============================================================================
+class InputUtil {
+    private static Scanner sc = new Scanner(System.in);
+
+    static int readInt(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            try {
+                return Integer.parseInt(sc.nextLine());
+            } catch (Exception e) {
+                System.out.println("❌ Invalid number. Try again.");
+            }
+        }
+    }
+
+    static double readDouble(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            try {
+                return Double.parseDouble(sc.nextLine());
+            } catch (Exception e) {
+                System.out.println("❌ Invalid number. Try again.");
+            }
+        }
+    }
+
+    static String readString(String prompt) {
+        System.out.print(prompt);
+        return sc.nextLine();
+    }
+}
+
+// ============================================================================
+// Demo Menu Console UI (Main Application)
+// ============================================================================
+public class StrategyPaymentDemo {
+    private static ShoppingCart cart = new ShoppingCart();
+    private static Scanner sc = new Scanner(System.in);
+
+    public static void main(String[] args) {
+        boolean running = true;
+        while (running) {
+            printMenu();
+            int choice = InputUtil.readInt("Select option: ");
+
+            switch (choice) {
+                case 1 -> addItemMenu();
+                case 2 -> cart.viewCart();
+                case 3 -> choosePaymentMenu();
+                case 4 -> cart.checkout();
+                case 0 -> {
+                    System.out.println("Exiting system...");
+                    running = false;
+                }
+                default -> System.out.println("Invalid choice. Try again.");
+            }
+        }
+    }
+
+    private static void printMenu() {
+        System.out.println("\n==============================");
+        System.out.println("     🛒 Strategy Pattern Cart");
+        System.out.println("==============================");
+        System.out.println("1️⃣  Add item");
+        System.out.println("2️⃣  View cart");
+        System.out.println("3️⃣  Choose payment");
+        System.out.println("4️⃣  Checkout");
+        System.out.println("0️⃣  Exit");
+    }
+
+    private static void addItemMenu() {
+        String item = InputUtil.readString("Enter item name: ");
+        double price = InputUtil.readDouble("Enter price: $");
+        cart.addItem(item, price);
+    }
+
+    private static void choosePaymentMenu() {
+        System.out.println("""
+                Select Payment Method:
+                1. Credit Card
+                2. PayPal
+                3. Crypto
+                """);
+
+        int option = InputUtil.readInt("Your choice: ");
+        switch (option) {
+            case 1 -> setupCreditCard();
+            case 2 -> setupPayPal();
+            case 3 -> setupCrypto();
+            default -> System.out.println("Invalid option!");
+        }
+    }
+
+    private static void setupCreditCard() {
+        System.out.println("\n--- Credit Card Setup ---");
+        String cardNum = InputUtil.readString("Card Number: ");
+        String name = InputUtil.readString("Card Holder: ");
+        String cvv = InputUtil.readString("CVV: ");
+        String exp = InputUtil.readString("Expiration Date (MM/YY): ");
+        
+        cart.choosePaymentStrategy(
+            new CreditCardPayment(cardNum, name, cvv, exp)
+        );
+    }
+
+    private static void setupPayPal() {
+        System.out.println("\n--- PayPal Setup ---");
+        String email = InputUtil.readString("Email: ");
+        String pass = InputUtil.readString("Password: ");
+
+        cart.choosePaymentStrategy(new PayPalPayment(email, pass));
+    }
+
+    private static void setupCrypto() {
+        System.out.println("\n--- Crypto Wallet Setup ---");
+        String wallet = InputUtil.readString("Wallet ID: ");
+        cart.choosePaymentStrategy(new CryptoPayment(wallet));
+    }
+}
+
+// ============================================================================
+// END OF FILE (Approx: 310+ lines including spacing)
+// ============================================================================
