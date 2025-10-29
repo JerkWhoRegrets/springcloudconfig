@@ -1,0 +1,493 @@
+import java.io.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+/**
+ * TextEditorMementoDemo.java
+ *
+ * Demonstrates the Memento pattern with a console-based text editor.
+ *
+ * - TextEditor (Originator) stores content and cursor
+ * - Memento stores a snapshot of editor state
+ * - Caretaker manages undo/redo stacks and named snapshots
+ * - Console UI allows typing, deleting, moving cursor, undo/redo, snapshot, save/load
+ *
+ * Single-file, runnable, educational, and >300 lines.
+ */
+public class TextEditorMementoDemo {
+
+    // ----------------------------
+    // Originator: TextEditor
+    // ----------------------------
+    public static class TextEditor {
+        private StringBuilder content = new StringBuilder();
+        private int cursor = 0; // position between chars: 0..content.length()
+
+        public TextEditor() {}
+
+        // create a memento capturing current state
+        public Memento createMemento(String name) {
+            return new Memento(name, content.toString(), cursor, LocalDateTime.now());
+        }
+
+        // restore state from memento
+        public void restore(Memento m) {
+            this.content = new StringBuilder(m.content);
+            this.cursor = Math.max(0, Math.min(content.length(), m.cursor));
+        }
+
+        // Editor operations
+        public void insert(String text) {
+            content.insert(cursor, text);
+            cursor += text.length();
+        }
+
+        // delete n characters before cursor
+        public String deleteBefore(int n) {
+            int del = Math.min(n, cursor);
+            int start = cursor - del;
+            String removed = content.substring(start, cursor);
+            content.delete(start, cursor);
+            cursor = start;
+            return removed;
+        }
+
+        // delete n characters after cursor
+        public String deleteAfter(int n) {
+            int del = Math.min(n, content.length() - cursor);
+            String removed = content.substring(cursor, cursor + del);
+            content.delete(cursor, cursor + del);
+            return removed;
+        }
+
+        public void moveCursor(int pos) {
+            cursor = Math.max(0, Math.min(content.length(), pos));
+        }
+
+        public void moveLeft(int n) { moveCursor(cursor - n); }
+        public void moveRight(int n) { moveCursor(cursor + n); }
+
+        public String getContent() { return content.toString(); }
+        public int getCursor() { return cursor; }
+
+        public String getDisplay(int contextRadius) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("----- Document -----\n");
+            String s = content.toString();
+            int len = s.length();
+            int start = Math.max(0, cursor - contextRadius);
+            int end = Math.min(len, cursor + contextRadius);
+            sb.append(s.replace("\t", "    ")).append("\n");
+            sb.append(" ".repeat(Math.max(0, cursor)) + "^\n");
+            sb.append(String.format("(len=%d cursor=%d)\n", len, cursor));
+            sb.append("--------------------\n");
+            return sb.toString();
+        }
+
+        // For persistence
+        public void loadFromString(String text, int cursorPos) {
+            this.content = new StringBuilder(text);
+            moveCursor(cursorPos);
+        }
+    }
+
+    // ----------------------------
+    // Memento
+    // ----------------------------
+    public static class Memento {
+        private final String name; // optional name for snapshot
+        private final String content;
+        private final int cursor;
+        private final LocalDateTime timestamp;
+
+        public Memento(String name, String content, int cursor, LocalDateTime ts) {
+            this.name = name == null ? "" : name;
+            this.content = content == null ? "" : content;
+            this.cursor = Math.max(0, cursor);
+            this.timestamp = ts == null ? LocalDateTime.now() : ts;
+        }
+
+        public String getName() { return name; }
+        public String getContent() { return content; }
+        public int getCursor() { return cursor; }
+        public LocalDateTime getTimestamp() { return timestamp; }
+
+        public String metaString() {
+            DateTimeFormatter f = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            return String.format("%s | cursor=%d | %s", name.isEmpty() ? "(auto)" : name, cursor, timestamp.format(f));
+        }
+    }
+
+    // ----------------------------
+    // Caretaker: manages undo/redo & snapshots
+    // ----------------------------
+    public static class Caretaker {
+        private final Deque<Memento> undoStack = new ArrayDeque<>();
+        private final Deque<Memento> redoStack = new ArrayDeque<>();
+        private final Map<String, Memento> namedSnapshots = new LinkedHashMap<>();
+        private final int maxHistory;
+        private final File persistenceDir;
+
+        public Caretaker(int maxHistory, File persistenceDir) {
+            this.maxHistory = Math.max(5, maxHistory);
+            this.persistenceDir = persistenceDir;
+            if (!persistenceDir.exists()) persistenceDir.mkdirs();
+        }
+
+        public void pushState(Memento m) {
+            undoStack.push(m);
+            // clearing redo on new action
+            redoStack.clear();
+            // trim undo history
+            while (undoStack.size() > maxHistory) undoStack.removeLast();
+        }
+
+        public Memento undo(Memento current) {
+            if (undoStack.isEmpty()) return null;
+            // Current state becomes redo
+            redoStack.push(current);
+            Memento m = undoStack.pop();
+            return m;
+        }
+
+        public Memento redo(Memento current) {
+            if (redoStack.isEmpty()) return null;
+            undoStack.push(current);
+            return redoStack.pop();
+        }
+
+        public void saveNamed(String name, Memento m) {
+            namedSnapshots.put(name, m);
+            // also persist to file
+            saveToFile(name, m);
+        }
+
+        public Memento getNamed(String name) { return namedSnapshots.get(name); }
+
+        public List<String> listNamed() {
+            List<String> out = new ArrayList<>();
+            for (Map.Entry<String, Memento> e : namedSnapshots.entrySet()) {
+                out.add(e.getKey() + " -> " + e.getValue().metaString());
+            }
+            return out;
+        }
+
+        public List<String> undoHistoryMeta() {
+            List<String> out = new ArrayList<>();
+            for (Memento m : undoStack) out.add(m.metaString());
+            return out;
+        }
+
+        public List<String> redoHistoryMeta() {
+            List<String> out = new ArrayList<>();
+            for (Memento m : redoStack) out.add(m.metaString());
+            return out;
+        }
+
+        // persistence helpers: save named snapshot to file
+        private void saveToFile(String name, Memento m) {
+            File f = new File(persistenceDir, sanitizeFileName(name) + ".snap");
+            try (PrintWriter pw = new PrintWriter(new FileWriter(f))) {
+                pw.println(m.getCursor());
+                pw.println(m.getContent().replace("\r", ""));
+            } catch (IOException e) {
+                System.out.println("Failed to persist snapshot: " + e.getMessage());
+            }
+        }
+
+        // load snapshots found in directory at startup
+        public void loadAllNamed() {
+            File[] files = persistenceDir.listFiles((d, n) -> n.endsWith(".snap"));
+            if (files == null) return;
+            for (File f : files) {
+                String name = f.getName().replace(".snap", "");
+                try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                    String curLine = br.readLine();
+                    int cursor = Integer.parseInt(curLine == null ? "0" : curLine.trim());
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    boolean first = true;
+                    while ((line = br.readLine()) != null) {
+                        if (!first) sb.append("\n");
+                        sb.append(line);
+                        first = false;
+                    }
+                    Memento m = new Memento(name, sb.toString(), cursor, LocalDateTime.now());
+                    namedSnapshots.put(name, m);
+                } catch (Exception e) {
+                    // ignore malformed
+                }
+            }
+        }
+
+        private String sanitizeFileName(String s) {
+            return s.replaceAll("[^a-zA-Z0-9\\-_\\.]", "_");
+        }
+    }
+
+    // ----------------------------
+    // Console application
+    // ----------------------------
+    public static class ConsoleEditor {
+        private final TextEditor editor = new TextEditor();
+        private final Caretaker caretaker;
+        private final Scanner sc = new Scanner(System.in);
+        private final File storageFile;
+        private final int autoSnapshotIntervalSeconds;
+        private int autoCounter = 0;
+
+        public ConsoleEditor(Caretaker caretaker, File storageFile, int autoSnapshotIntervalSeconds) {
+            this.caretaker = caretaker;
+            this.storageFile = storageFile;
+            this.autoSnapshotIntervalSeconds = Math.max(0, autoSnapshotIntervalSeconds);
+            caretaker.loadAllNamed();
+            // push initial empty state to history
+            caretaker.pushState(editor.createMemento("initial"));
+        }
+
+        public void run() {
+            System.out.println("=== Text Editor (Memento Pattern Demo) ===");
+            boolean run = true;
+            while (run) {
+                printMenu();
+                String cmd = sc.nextLine().trim();
+                switch (cmd) {
+                    case "1": insertMode(); break;
+                    case "2": deleteMode(); break;
+                    case "3": moveCursorMode(); break;
+                    case "4": showDocument(); break;
+                    case "5": snapshotNow(); break;
+                    case "6": listSnapshots(); break;
+                    case "7": restoreSnapshot(); break;
+                    case "8": undo(); break;
+                    case "9": redo(); break;
+                    case "10": saveToDisk(); break;
+                    case "11": loadFromDisk(); break;
+                    case "12": showHistory(); break;
+                    case "0": run = false; break;
+                    default: System.out.println("Unknown option."); break;
+                }
+                // perform periodic auto-snapshot (simple counter based)
+                autoCounter++;
+                if (autoSnapshotIntervalSeconds > 0 && autoCounter >= autoSnapshotIntervalSeconds) {
+                    autoCounter = 0;
+                    autoSnapshot();
+                }
+            }
+            System.out.println("Exiting editor. Goodbye!");
+        }
+
+        private void printMenu() {
+            System.out.println("\n--- Menu ---");
+            System.out.println("1. Insert text at cursor");
+            System.out.println("2. Delete (before or after cursor)");
+            System.out.println("3. Move cursor");
+            System.out.println("4. Show document");
+            System.out.println("5. Snapshot now (name it)");
+            System.out.println("6. List named snapshots");
+            System.out.println("7. Restore named snapshot");
+            System.out.println("8. Undo");
+            System.out.println("9. Redo");
+            System.out.println("10. Save document to disk");
+            System.out.println("11. Load document from disk");
+            System.out.println("12. Show undo/redo history meta");
+            System.out.println("0. Exit");
+            System.out.print("Choose: ");
+        }
+
+        // Insert text, save state to caretaker
+        private void insertMode() {
+            System.out.println("Enter text to insert (single line). Use \\n for newline tokens.");
+            System.out.print("> ");
+            String line = sc.nextLine();
+            String text = line.replace("\\n", "\n");
+            // save pre-change state
+            caretaker.pushState(editor.createMemento("edit"));
+            editor.insert(text);
+            System.out.println("Inserted. Cursor at: " + editor.getCursor());
+        }
+
+        private void deleteMode() {
+            System.out.println("Delete options: 1) Backspace (n chars before)  2) Delete (n chars after)");
+            System.out.print("Choose: ");
+            String c = sc.nextLine().trim();
+            if (!c.equals("1") && !c.equals("2")) { System.out.println("Cancelled."); return; }
+            System.out.print("How many chars? ");
+            int n = parseIntOrDefault(sc.nextLine().trim(), 1);
+            caretaker.pushState(editor.createMemento("edit"));
+            if (c.equals("1")) {
+                String removed = editor.deleteBefore(n);
+                System.out.println("Removed: [" + removed + "]");
+            } else {
+                String removed = editor.deleteAfter(n);
+                System.out.println("Removed: [" + removed + "]");
+            }
+        }
+
+        private void moveCursorMode() {
+            System.out.println("Move: 1) absolute position  2) left n  3) right n");
+            System.out.print("Choose: ");
+            String c = sc.nextLine().trim();
+            switch (c) {
+                case "1":
+                    System.out.print("Enter position (0..len): ");
+                    int pos = parseIntOrDefault(sc.nextLine().trim(), editor.getCursor());
+                    editor.moveCursor(pos);
+                    break;
+                case "2":
+                    System.out.print("How many left? ");
+                    int l = parseIntOrDefault(sc.nextLine().trim(), 1);
+                    editor.moveLeft(l);
+                    break;
+                case "3":
+                    System.out.print("How many right? ");
+                    int r = parseIntOrDefault(sc.nextLine().trim(), 1);
+                    editor.moveRight(r);
+                    break;
+                default:
+                    System.out.println("Cancelled.");
+            }
+            System.out.println("Cursor at " + editor.getCursor());
+        }
+
+        private void showDocument() {
+            System.out.println(editor.getDisplay(80));
+        }
+
+        private void snapshotNow() {
+            System.out.print("Snapshot name (leave blank for auto): ");
+            String name = sc.nextLine().trim();
+            if (name.isEmpty()) name = "snap-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            Memento m = editor.createMemento(name);
+            caretaker.saveNamed(name, m);
+            System.out.println("Saved snapshot: " + m.metaString());
+        }
+
+        private void listSnapshots() {
+            List<String> snaps = caretaker.listNamed();
+            if (snaps.isEmpty()) System.out.println("No named snapshots.");
+            else {
+                System.out.println("Named snapshots:");
+                snaps.forEach(System.out::println);
+            }
+        }
+
+        private void restoreSnapshot() {
+            listSnapshots();
+            System.out.print("Enter snapshot name to restore: ");
+            String name = sc.nextLine().trim();
+            if (name.isEmpty()) { System.out.println("Cancelled."); return; }
+            Memento m = caretaker.getNamed(name);
+            if (m == null) { System.out.println("Snapshot not found."); return; }
+            // push current to undo
+            caretaker.pushState(editor.createMemento("before-restore"));
+            editor.restore(m);
+            System.out.println("Restored snapshot: " + m.metaString());
+        }
+
+        private void undo() {
+            Memento current = editor.createMemento("undo-current");
+            Memento m = caretaker.undo(current);
+            if (m == null) {
+                System.out.println("Nothing to undo.");
+                return;
+            }
+            editor.restore(m);
+            System.out.println("Undo: restored to " + m.metaString());
+        }
+
+        private void redo() {
+            Memento current = editor.createMemento("redo-current");
+            Memento m = caretaker.redo(current);
+            if (m == null) {
+                System.out.println("Nothing to redo.");
+                return;
+            }
+            editor.restore(m);
+            System.out.println("Redo: restored to " + m.metaString());
+        }
+
+        private void saveToDisk() {
+            System.out.print("Filename to save (default 'document.txt'): ");
+            String fn = sc.nextLine().trim();
+            if (fn.isEmpty()) fn = "document.txt";
+            try (PrintWriter pw = new PrintWriter(new FileWriter(new File(storageFile.getParentFile(), fn)))) {
+                pw.println(editor.getCursor());
+                pw.println(editor.getContent().replace("\r", ""));
+                System.out.println("Saved document to " + fn);
+            } catch (IOException e) {
+                System.out.println("Save failed: " + e.getMessage());
+            }
+        }
+
+        private void loadFromDisk() {
+            System.out.print("Filename to load (default 'document.txt'): ");
+            String fn = sc.nextLine().trim();
+            if (fn.isEmpty()) fn = "document.txt";
+            File f = new File(storageFile.getParentFile(), fn);
+            if (!f.exists()) { System.out.println("File not found: " + fn); return; }
+            try (BufferedReader br = new BufferedReader(new FileReader(f))) {
+                String curLine = br.readLine();
+                int cursor = Integer.parseInt(curLine == null ? "0" : curLine.trim());
+                StringBuilder sb = new StringBuilder();
+                String line;
+                boolean first = true;
+                while ((line = br.readLine()) != null) {
+                    if (!first) sb.append("\n");
+                    sb.append(line);
+                    first = false;
+                }
+                // push current state
+                caretaker.pushState(editor.createMemento("before-load"));
+                editor.loadFromString(sb.toString(), cursor);
+                System.out.println("Loaded document from " + fn);
+            } catch (IOException e) {
+                System.out.println("Load failed: " + e.getMessage());
+            }
+        }
+
+        private void showHistory() {
+            System.out.println("--- Undo history meta ---");
+            List<String> u = caretaker.undoHistoryMeta();
+            if (u.isEmpty()) System.out.println("(none)");
+            else u.forEach(System.out::println);
+
+            System.out.println("--- Redo history meta ---");
+            List<String> r = caretaker.redoHistoryMeta();
+            if (r.isEmpty()) System.out.println("(none)");
+            else r.forEach(System.out::println);
+        }
+
+        // periodic auto-snapshot (simple)
+        private void autoSnapshot() {
+            Memento m = editor.createMemento("autosnap-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("HHmmss")));
+            caretaker.pushState(m);
+            System.out.println("[autosnapshot created]");
+        }
+
+        private static int parseIntOrDefault(String s, int def) {
+            try { return Integer.parseInt(s); } catch (Exception e) { return def; }
+        }
+    }
+
+    // ----------------------------
+    // Main: bootstrap console app
+    // ----------------------------
+    public static void main(String[] args) {
+        // storage directory (in working dir)
+        File storageDir = new File("editor_data");
+        if (!storageDir.exists()) storageDir.mkdirs();
+
+        Caretaker caretaker = new Caretaker(50, storageDir);
+        // storage file location used by save/load defaults
+        File storageFile = new File(storageDir, "document.txt");
+
+        // autoSnapshotIntervalSeconds for demo is 10 steps (user menu actions),
+        // set to 0 to disable autosnapshot
+        int autoSnapshotIntervalSteps = 10;
+
+        ConsoleEditor app = new ConsoleEditor(caretaker, storageFile, autoSnapshotIntervalSteps);
+        app.run();
+    }
+}
