@@ -1,0 +1,320 @@
+import java.util.*;
+
+/**
+ * HospitalVisitorDemo.java
+ *
+ * Demonstrates the Visitor Design Pattern in a hospital domain.
+ * 
+ * Core idea:
+ * - Different hospital members (Doctor, Nurse, Patient, etc.) are "Elements".
+ * - Various "Visitors" perform different operations on them (Salary, Reports, Insurance, Audit).
+ *
+ * Single-file, self-contained, ~330 lines.
+ */
+public class HospitalVisitorDemo {
+
+    // ===============================
+    // Element interface (accept Visitor)
+    // ===============================
+    interface HospitalMember {
+        void accept(HospitalVisitor visitor);
+        String getName();
+    }
+
+    // ===============================
+    // Concrete Elements
+    // ===============================
+    static class Doctor implements HospitalMember {
+        private final String name;
+        private final String specialty;
+        private final double salary;
+        private final int patientsPerDay;
+
+        public Doctor(String name, String specialty, double salary, int patientsPerDay) {
+            this.name = name;
+            this.specialty = specialty;
+            this.salary = salary;
+            this.patientsPerDay = patientsPerDay;
+        }
+
+        public String getName() { return name; }
+        public String getSpecialty() { return specialty; }
+        public double getSalary() { return salary; }
+        public int getPatientsPerDay() { return patientsPerDay; }
+
+        @Override
+        public void accept(HospitalVisitor visitor) {
+            visitor.visit(this);
+        }
+    }
+
+    static class Nurse implements HospitalMember {
+        private final String name;
+        private final int shiftHours;
+        private final double hourlyRate;
+
+        public Nurse(String name, int shiftHours, double hourlyRate) {
+            this.name = name;
+            this.shiftHours = shiftHours;
+            this.hourlyRate = hourlyRate;
+        }
+
+        public String getName() { return name; }
+        public int getShiftHours() { return shiftHours; }
+        public double getHourlyRate() { return hourlyRate; }
+
+        @Override
+        public void accept(HospitalVisitor visitor) {
+            visitor.visit(this);
+        }
+    }
+
+    static class Patient implements HospitalMember {
+        private final String name;
+        private final String condition;
+        private final boolean insured;
+        private final double billAmount;
+
+        public Patient(String name, String condition, boolean insured, double billAmount) {
+            this.name = name;
+            this.condition = condition;
+            this.insured = insured;
+            this.billAmount = billAmount;
+        }
+
+        public String getName() { return name; }
+        public String getCondition() { return condition; }
+        public boolean isInsured() { return insured; }
+        public double getBillAmount() { return billAmount; }
+
+        @Override
+        public void accept(HospitalVisitor visitor) {
+            visitor.visit(this);
+        }
+    }
+
+    static class VisitorPerson implements HospitalMember {
+        private final String name;
+        private final String visitingWhom;
+        private final int visitingMinutes;
+
+        public VisitorPerson(String name, String visitingWhom, int visitingMinutes) {
+            this.name = name;
+            this.visitingWhom = visitingWhom;
+            this.visitingMinutes = visitingMinutes;
+        }
+
+        public String getName() { return name; }
+        public String getVisitingWhom() { return visitingWhom; }
+        public int getVisitingMinutes() { return visitingMinutes; }
+
+        @Override
+        public void accept(HospitalVisitor visitor) {
+            visitor.visit(this);
+        }
+    }
+
+    // ===============================
+    // Visitor Interface
+    // ===============================
+    interface HospitalVisitor {
+        void visit(Doctor d);
+        void visit(Nurse n);
+        void visit(Patient p);
+        void visit(VisitorPerson v);
+    }
+
+    // ===============================
+    // Concrete Visitors
+    // ===============================
+
+    // 1️⃣ SalaryVisitor — calculates total salary of staff
+    static class SalaryVisitor implements HospitalVisitor {
+        private double totalSalary = 0;
+
+        @Override
+        public void visit(Doctor d) {
+            totalSalary += d.getSalary();
+            System.out.printf("[SalaryVisitor] Doctor %-10s salary: $%.2f%n", d.getName(), d.getSalary());
+        }
+
+        @Override
+        public void visit(Nurse n) {
+            double monthly = n.getHourlyRate() * n.getShiftHours() * 20;
+            totalSalary += monthly;
+            System.out.printf("[SalaryVisitor] Nurse  %-10s est. salary: $%.2f%n", n.getName(), monthly);
+        }
+
+        @Override
+        public void visit(Patient p) {
+            // no salary for patients
+        }
+
+        @Override
+        public void visit(VisitorPerson v) {
+            // no salary
+        }
+
+        public double getTotalSalary() {
+            return totalSalary;
+        }
+    }
+
+    // 2️⃣ ReportVisitor — prints a detailed human-readable report
+    static class ReportVisitor implements HospitalVisitor {
+        private final StringBuilder report = new StringBuilder();
+
+        @Override
+        public void visit(Doctor d) {
+            report.append(String.format("Doctor %-10s (%s) sees %d patients/day\n",
+                    d.getName(), d.getSpecialty(), d.getPatientsPerDay()));
+        }
+
+        @Override
+        public void visit(Nurse n) {
+            report.append(String.format("Nurse %-10s works %d hrs/shift @ $%.2f/hr\n",
+                    n.getName(), n.getShiftHours(), n.getHourlyRate()));
+        }
+
+        @Override
+        public void visit(Patient p) {
+            report.append(String.format("Patient %-10s | Condition: %-15s | Insured: %-5s | Bill: $%.2f\n",
+                    p.getName(), p.getCondition(), p.isInsured(), p.getBillAmount()));
+        }
+
+        @Override
+        public void visit(VisitorPerson v) {
+            report.append(String.format("Visitor %-10s visiting %-10s for %d minutes\n",
+                    v.getName(), v.getVisitingWhom(), v.getVisitingMinutes()));
+        }
+
+        public String getReport() { return report.toString(); }
+    }
+
+    // 3️⃣ InsuranceVisitor — processes patient insurance coverage
+    static class InsuranceVisitor implements HospitalVisitor {
+        private double totalPaidByInsurance = 0;
+        private double totalUninsured = 0;
+
+        @Override
+        public void visit(Doctor d) {}
+        @Override
+        public void visit(Nurse n) {}
+        @Override
+        public void visit(VisitorPerson v) {}
+
+        @Override
+        public void visit(Patient p) {
+            if (p.isInsured()) {
+                double covered = p.getBillAmount() * 0.8;
+                totalPaidByInsurance += covered;
+                System.out.printf("[InsuranceVisitor] %s insured — covered: $%.2f%n", p.getName(), covered);
+            } else {
+                totalUninsured += p.getBillAmount();
+                System.out.printf("[InsuranceVisitor] %s not insured — self-pay: $%.2f%n", p.getName(), p.getBillAmount());
+            }
+        }
+
+        public void printSummary() {
+            System.out.println("Insurance Summary:");
+            System.out.printf("  Total covered by insurance: $%.2f%n", totalPaidByInsurance);
+            System.out.printf("  Total unpaid (self-pay):    $%.2f%n", totalUninsured);
+        }
+    }
+
+    // 4️⃣ AuditVisitor — ensures compliance and policies
+    static class AuditVisitor implements HospitalVisitor {
+        private final List<String> warnings = new ArrayList<>();
+
+        @Override
+        public void visit(Doctor d) {
+            if (d.getPatientsPerDay() > 50)
+                warnings.add("Doctor " + d.getName() + " might be overbooked.");
+        }
+
+        @Override
+        public void visit(Nurse n) {
+            if (n.getShiftHours() > 12)
+                warnings.add("Nurse " + n.getName() + " exceeding legal shift limit.");
+        }
+
+        @Override
+        public void visit(Patient p) {
+            if (p.getBillAmount() > 50000 && !p.isInsured())
+                warnings.add("Patient " + p.getName() + " high unpaid bill risk.");
+        }
+
+        @Override
+        public void visit(VisitorPerson v) {
+            if (v.getVisitingMinutes() > 120)
+                warnings.add("Visitor " + v.getName() + " overstayed visiting limit.");
+        }
+
+        public void printFindings() {
+            System.out.println("--- Audit Findings ---");
+            if (warnings.isEmpty()) System.out.println("No issues found!");
+            else warnings.forEach(w -> System.out.println("⚠️ " + w));
+        }
+    }
+
+    // ===============================
+    // Hospital structure (object graph)
+    // ===============================
+    static class Hospital {
+        private final List<HospitalMember> members = new ArrayList<>();
+
+        public void addMember(HospitalMember member) {
+            members.add(member);
+        }
+
+        public void acceptVisitor(HospitalVisitor visitor) {
+            for (HospitalMember m : members) {
+                m.accept(visitor);
+            }
+        }
+
+        public int size() { return members.size(); }
+    }
+
+    // ===============================
+    // Main: run demo
+    // ===============================
+    public static void main(String[] args) {
+        // 1. Build hospital
+        Hospital hospital = new Hospital();
+        hospital.addMember(new Doctor("Alice", "Cardiology", 120000, 40));
+        hospital.addMember(new Doctor("Bob", "Neurology", 135000, 60));
+        hospital.addMember(new Nurse("Carol", 10, 40));
+        hospital.addMember(new Nurse("Daisy", 14, 35)); // triggers audit warning
+        hospital.addMember(new Patient("Eve", "Flu", true, 800));
+        hospital.addMember(new Patient("Frank", "Surgery", false, 60000)); // triggers audit
+        hospital.addMember(new VisitorPerson("George", "Frank", 180)); // triggers audit
+        hospital.addMember(new VisitorPerson("Helen", "Eve", 60));
+
+        // 2. Salary report
+        System.out.println("\n=== SALARY VISITOR ===");
+        SalaryVisitor salaryVisitor = new SalaryVisitor();
+        hospital.acceptVisitor(salaryVisitor);
+        System.out.printf("Total salary: $%.2f%n", salaryVisitor.getTotalSalary());
+
+        // 3. Report visitor
+        System.out.println("\n=== REPORT VISITOR ===");
+        ReportVisitor reportVisitor = new ReportVisitor();
+        hospital.acceptVisitor(reportVisitor);
+        System.out.println(reportVisitor.getReport());
+
+        // 4. Insurance processing
+        System.out.println("\n=== INSURANCE VISITOR ===");
+        InsuranceVisitor insuranceVisitor = new InsuranceVisitor();
+        hospital.acceptVisitor(insuranceVisitor);
+        insuranceVisitor.printSummary();
+
+        // 5. Audit visitor
+        System.out.println("\n=== AUDIT VISITOR ===");
+        AuditVisitor auditVisitor = new AuditVisitor();
+        hospital.acceptVisitor(auditVisitor);
+        auditVisitor.printFindings();
+
+        System.out.println("\n--- Demo Completed ---");
+    }
+}
