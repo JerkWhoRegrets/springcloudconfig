@@ -9,7 +9,6 @@ import java.util.*;
  * - Different hospital members (Doctor, Nurse, Patient, etc.) are "Elements".
  * - Various "Visitors" perform different operations on them (Salary, Reports, Insurance, Audit).
  *
- * Single-file, self-contained, ~330 lines.
  */
 public class HospitalVisitorDemo {
 
