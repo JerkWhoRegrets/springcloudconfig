@@ -1,0 +1,272 @@
+import java.util.*;
+
+/**
+ * HospitalMediatorDemo.java
+ * -------------------------------------------------------------
+ * Demonstrates the Mediator Design Pattern in a hospital context.
+ * Departments (EmergencyRoom, Pharmacy, Lab, Reception, Ambulance)
+ * communicate *indirectly* via a central mediator.
+ * 
+ * This example shows how Mediator helps decouple multiple interacting
+ * components in a system.
+ */
+public class HospitalMediatorDemo {
+
+    // =====================================================================
+    // Mediator Interface
+    // =====================================================================
+    interface HospitalMediator {
+        void sendMessage(String message, Department sender);
+        void registerDepartment(Department department);
+        Department getDepartment(String name);
+    }
+
+    // =====================================================================
+    // Concrete Mediator
+    // =====================================================================
+    static class CentralHospitalMediator implements HospitalMediator {
+        private Map<String, Department> departments = new HashMap<>();
+
+        @Override
+        public void sendMessage(String message, Department sender) {
+            System.out.println("\n🕊️ Mediator routing message from " + sender.getName());
+            for (Department dept : departments.values()) {
+                if (dept != sender) {
+                    dept.receive(message, sender);
+                }
+            }
+        }
+
+        @Override
+        public void registerDepartment(Department department) {
+            departments.put(department.getName(), department);
+            System.out.println("✅ " + department.getName() + " registered with Central Mediator");
+        }
+
+        @Override
+        public Department getDepartment(String name) {
+            return departments.get(name);
+        }
+    }
+
+    // =====================================================================
+    // Department (Colleague Interface)
+    // =====================================================================
+    interface Department {
+        void receive(String message, Department sender);
+        void send(String message);
+        String getName();
+    }
+
+    // =====================================================================
+    // Concrete Departments
+    // =====================================================================
+
+    static class EmergencyRoom implements Department {
+        private HospitalMediator mediator;
+
+        public EmergencyRoom(HospitalMediator mediator) {
+            this.mediator = mediator;
+        }
+
+        @Override
+        public void receive(String message, Department sender) {
+            System.out.println("🏥 EmergencyRoom received: \"" + message + "\" from " + sender.getName());
+        }
+
+        @Override
+        public void send(String message) {
+            System.out.println("🚑 EmergencyRoom sending: " + message);
+            mediator.sendMessage("[EMERGENCY] " + message, this);
+        }
+
+        @Override
+        public String getName() {
+            return "EmergencyRoom";
+        }
+    }
+
+    static class Pharmacy implements Department {
+        private HospitalMediator mediator;
+
+        public Pharmacy(HospitalMediator mediator) {
+            this.mediator = mediator;
+        }
+
+        @Override
+        public void receive(String message, Department sender) {
+            System.out.println("💊 Pharmacy received: \"" + message + "\" from " + sender.getName());
+        }
+
+        @Override
+        public void send(String message) {
+            System.out.println("💊 Pharmacy sending: " + message);
+            mediator.sendMessage("[PHARMACY] " + message, this);
+        }
+
+        @Override
+        public String getName() {
+            return "Pharmacy";
+        }
+    }
+
+    static class Laboratory implements Department {
+        private HospitalMediator mediator;
+
+        public Laboratory(HospitalMediator mediator) {
+            this.mediator = mediator;
+        }
+
+        @Override
+        public void receive(String message, Department sender) {
+            System.out.println("🔬 Lab received: \"" + message + "\" from " + sender.getName());
+        }
+
+        @Override
+        public void send(String message) {
+            System.out.println("🔬 Lab sending: " + message);
+            mediator.sendMessage("[LAB] " + message, this);
+        }
+
+        @Override
+        public String getName() {
+            return "Laboratory";
+        }
+    }
+
+    static class Reception implements Department {
+        private HospitalMediator mediator;
+
+        public Reception(HospitalMediator mediator) {
+            this.mediator = mediator;
+        }
+
+        @Override
+        public void receive(String message, Department sender) {
+            System.out.println("🛎️ Reception received: \"" + message + "\" from " + sender.getName());
+        }
+
+        @Override
+        public void send(String message) {
+            System.out.println("🛎️ Reception sending: " + message);
+            mediator.sendMessage("[RECEPTION] " + message, this);
+        }
+
+        @Override
+        public String getName() {
+            return "Reception";
+        }
+    }
+
+    static class AmbulanceUnit implements Department {
+        private HospitalMediator mediator;
+
+        public AmbulanceUnit(HospitalMediator mediator) {
+            this.mediator = mediator;
+        }
+
+        @Override
+        public void receive(String message, Department sender) {
+            System.out.println("🚑 Ambulance received: \"" + message + "\" from " + sender.getName());
+        }
+
+        @Override
+        public void send(String message) {
+            System.out.println("🚑 Ambulance sending: " + message);
+            mediator.sendMessage("[AMBULANCE] " + message, this);
+        }
+
+        @Override
+        public String getName() {
+            return "AmbulanceUnit";
+        }
+    }
+
+    // =====================================================================
+    // Console Interface for Simulation
+    // =====================================================================
+    static class ConsoleUI {
+        private final HospitalMediator mediator;
+        private final Map<Integer, Department> options = new LinkedHashMap<>();
+        private final Scanner scanner = new Scanner(System.in);
+
+        public ConsoleUI(HospitalMediator mediator) {
+            this.mediator = mediator;
+            initializeDepartments();
+        }
+
+        private void initializeDepartments() {
+            options.put(1, mediator.getDepartment("Reception"));
+            options.put(2, mediator.getDepartment("EmergencyRoom"));
+            options.put(3, mediator.getDepartment("Pharmacy"));
+            options.put(4, mediator.getDepartment("Laboratory"));
+            options.put(5, mediator.getDepartment("AmbulanceUnit"));
+        }
+
+        public void start() {
+            boolean running = true;
+            while (running) {
+                printMenu();
+                int choice = readInt("Select a department (1–5): ");
+                if (choice == 0) {
+                    System.out.println("👋 Shutting down system...");
+                    running = false;
+                    continue;
+                }
+                Department sender = options.get(choice);
+                if (sender == null) {
+                    System.out.println("❌ Invalid option!");
+                    continue;
+                }
+                String msg = readLine("Enter message to send: ");
+                sender.send(msg);
+            }
+        }
+
+        private void printMenu() {
+            System.out.println("\n============================");
+            System.out.println("  🏥 Hospital Communication");
+            System.out.println("============================");
+            options.forEach((i, d) -> System.out.println(i + ". " + d.getName()));
+            System.out.println("0. Exit");
+        }
+
+        private String readLine(String prompt) {
+            System.out.print(prompt);
+            return scanner.nextLine();
+        }
+
+        private int readInt(String prompt) {
+            System.out.print(prompt);
+            try {
+                return Integer.parseInt(scanner.nextLine());
+            } catch (Exception e) {
+                return -1;
+            }
+        }
+    }
+
+    // =====================================================================
+    // Main Application
+    // =====================================================================
+    public static void main(String[] args) {
+        CentralHospitalMediator mediator = new CentralHospitalMediator();
+
+        // Create and register all departments
+        Reception reception = new Reception(mediator);
+        EmergencyRoom emergency = new EmergencyRoom(mediator);
+        Pharmacy pharmacy = new Pharmacy(mediator);
+        Laboratory lab = new Laboratory(mediator);
+        AmbulanceUnit ambulance = new AmbulanceUnit(mediator);
+
+        mediator.registerDepartment(reception);
+        mediator.registerDepartment(emergency);
+        mediator.registerDepartment(pharmacy);
+        mediator.registerDepartment(lab);
+        mediator.registerDepartment(ambulance);
+
+        // Start console interaction
+        ConsoleUI ui = new ConsoleUI(mediator);
+        ui.start();
+    }
+}
