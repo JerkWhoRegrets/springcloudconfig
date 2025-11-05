@@ -1,0 +1,516 @@
+import java.io.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.*;
+
+/**
+ * HospitalStateDemo.java
+ *
+ * Demonstrates the State design pattern with a Patient health-state machine.
+ *
+ * - Patient (Context) holds a PatientState.
+ * - PatientState (interface) defines behaviors that vary with state.
+ * - Concrete states implement behavior & transitions: Critical, Recovering, Stable, Discharged, Deceased.
+ * - Vitals simulator influences automatic transitions.
+ * - Console UI to create patients, run simulation ticks, call actions, and inspect logs.
+ *
+ */
+public class HospitalStateDemo {
+
+    // -------------------------
+    // Simple Logger
+    // -------------------------
+    static class Logger {
+        private final List<String> history = Collections.synchronizedList(new ArrayList<>());
+        private final DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        void log(String msg) {
+            String line = LocalDateTime.now().format(fmt) + " - " + msg;
+            history.add(line);
+            System.out.println(line);
+        }
+
+        List<String> recent(int n) {
+            synchronized (history) {
+                int from = Math.max(0, history.size() - n);
+                return new ArrayList<>(history.subList(from, history.size()));
+            }
+        }
+    }
+
+    static final Logger LOGGER = new Logger();
+
+    // -------------------------
+    // Patient context and vitals
+    // -------------------------
+    static class Vitals {
+        double heartRate; // bpm
+        double systolicBP; // mmHg
+        double diastolicBP; // mmHg
+        double oxygen; // SpO2 %
+        double temperature; // Celsius
+
+        Vitals(double hr, double sys, double dia, double oxy, double temp) {
+            this.heartRate = hr;
+            this.systolicBP = sys;
+            this.diastolicBP = dia;
+            this.oxygen = oxy;
+            this.temperature = temp;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("HR=%.0f bpm | BP=%.0f/%.0f mmHg | SpO2=%.0f%% | T=%.1f°C",
+                    heartRate, systolicBP, diastolicBP, oxygen, temperature);
+        }
+    }
+
+    interface PatientState {
+        void treat(Patient p);
+        void observe(Patient p);
+        void transfer(Patient p, String ward);
+        void discharge(Patient p);
+        void codeBlue(Patient p); // emergency action
+        String name();
+        void onEnter(Patient p); // called when entering the state
+        void onExit(Patient p);  // called when exiting the state
+    }
+
+    static class Patient {
+        private final String id;
+        private final String name;
+        private Vitals vitals;
+        private PatientState state;
+        private final List<String> history = new ArrayList<>();
+
+        Patient(String id, String name, Vitals vitals, PatientState initialState) {
+            this.id = id;
+            this.name = name;
+            this.vitals = vitals;
+            setState(initialState);
+        }
+
+        public String getId() { return id; }
+        public String getName() { return name; }
+        public Vitals getVitals() { return vitals; }
+
+        public synchronized void setVitals(Vitals v) {
+            this.vitals = v;
+            LOGGER.log(String.format("Patient %s (%s) vitals update: %s", id, name, v.toString()));
+            evaluateStateTransition();
+        }
+
+        public synchronized void setState(PatientState newState) {
+            if (this.state != null) this.state.onExit(this);
+            this.state = newState;
+            this.state.onEnter(this);
+            history.add(String.format("[%s] Entered %s", LocalDateTime.now(), state.name()));
+        }
+
+        public synchronized PatientState getState() { return state; }
+
+        // actions - delegated to current state
+        public void treat() { state.treat(this); }
+        public void observe() { state.observe(this); }
+        public void transfer(String ward) { state.transfer(this, ward); }
+        public void discharge() { state.discharge(this); }
+        public void codeBlue() { state.codeBlue(this); }
+
+        private void evaluateStateTransition() {
+            // Decide automatic transitions based on vitals thresholds
+            Vitals v = this.vitals;
+            // crude rules
+            boolean veryCritical = (v.oxygen < 85 || v.systolicBP < 80 || v.heartRate > 140 || v.temperature > 41.0);
+            boolean critical = (v.oxygen < 90 || v.systolicBP < 90 || v.heartRate > 120 || v.temperature > 39.0);
+            boolean stable = (v.oxygen >= 95 && v.systolicBP >= 110 && v.heartRate >= 60 && v.heartRate <= 100 && v.temperature < 38.0);
+            boolean recovering = (v.oxygen >= 90 && v.systolicBP >= 95 && v.heartRate <= 120 && v.temperature < 39.0);
+
+            PatientState cur = getState();
+            if (veryCritical) {
+                if (!(cur instanceof CriticalState)) {
+                    LOGGER.log("Auto-transition: vitals indicate VERY CRITICAL -> moving to Critical");
+                    setState(new CriticalState());
+                }
+            } else if (critical) {
+                if (!(cur instanceof CriticalState)) {
+                    LOGGER.log("Auto-transition: vitals indicate CRITICAL -> moving to Critical");
+                    setState(new CriticalState());
+                }
+            } else if (recovering) {
+                if (!(cur instanceof RecoveringState) && !(cur instanceof StableState)) {
+                    LOGGER.log("Auto-transition: vitals improving -> moving to Recovering");
+                    setState(new RecoveringState());
+                }
+            } else if (stable) {
+                if (!(cur instanceof StableState)) {
+                    LOGGER.log("Auto-transition: vitals stable -> moving to Stable");
+                    setState(new StableState());
+                }
+            } else {
+                // otherwise keep current or move to Recovering for small improvements
+                // No-op
+            }
+        }
+
+        public void printSummary() {
+            System.out.println("-------------------------------------------------");
+            System.out.printf("Patient: %s (%s)\n", name, id);
+            System.out.println("State: " + state.name());
+            System.out.println("Vitals: " + vitals.toString());
+            System.out.println("History:");
+            for (String s : history) System.out.println("  " + s);
+            System.out.println("-------------------------------------------------");
+        }
+    }
+
+    // -------------------------
+    // Concrete States
+    // -------------------------
+    static abstract class BaseState implements PatientState {
+        @Override public void onEnter(Patient p) {
+            LOGGER.log(p.getName() + " entered state " + name());
+        }
+        @Override public void onExit(Patient p) {
+            LOGGER.log(p.getName() + " exiting state " + name());
+        }
+        @Override public void transfer(Patient p, String ward) {
+            LOGGER.log("Transfer request: " + p.getName() + " -> " + ward + " (state=" + name() + ")");
+            System.out.println("Transfer queued: " + p.getName() + " to " + ward);
+        }
+        @Override public void discharge(Patient p) {
+            if (this instanceof StableState) {
+                LOGGER.log("Discharging patient " + p.getName());
+                p.setState(new DischargedState());
+            } else {
+                LOGGER.log("Cannot discharge " + p.getName() + " while in state " + name());
+                System.out.println("Patient not stable enough to discharge.");
+            }
+        }
+        @Override public void codeBlue(Patient p) {
+            LOGGER.log("Code blue triggered for " + p.getName());
+            p.setState(new CriticalState());
+        }
+    }
+
+    static class CriticalState extends BaseState {
+        @Override public String name() { return "Critical"; }
+
+        @Override public void treat(Patient p) {
+            LOGGER.log("Aggressive treatment started for " + p.getName() + " (Critical).");
+            // simulate improvement by nudging vitals toward stable
+            Vitals v = p.getVitals();
+            v.oxygen = Math.min(98, v.oxygen + 5);
+            v.systolicBP = Math.min(110, v.systolicBP + 8);
+            v.heartRate = Math.max(80, v.heartRate - 20);
+            p.setVitals(v);
+            // after aggressive treatment maybe move to recovering
+            if (v.oxygen >= 90 && v.systolicBP >= 95) {
+                LOGGER.log(p.getName() + " responding to treatment -> Recovering");
+                p.setState(new RecoveringState());
+            }
+        }
+
+        @Override public void observe(Patient p) {
+            LOGGER.log("Continuous monitoring for " + p.getName() + " (Critical)");
+            // minimal observation action
+        }
+    }
+
+    static class RecoveringState extends BaseState {
+        @Override public String name() { return "Recovering"; }
+
+        @Override public void treat(Patient p) {
+            LOGGER.log("Standard treatment for " + p.getName() + " (Recovering).");
+            Vitals v = p.getVitals();
+            v.oxygen = Math.min(99, v.oxygen + 2);
+            v.systolicBP = Math.min(120, v.systolicBP + 4);
+            v.heartRate = Math.max(65, v.heartRate - 10);
+            p.setVitals(v);
+            if (v.oxygen >= 95 && v.heartRate <= 100 && v.systolicBP >= 110) {
+                LOGGER.log(p.getName() + " improved -> Stable");
+                p.setState(new StableState());
+            }
+        }
+
+        @Override public void observe(Patient p) {
+            LOGGER.log("Scheduled checks for " + p.getName() + " (Recovering).");
+        }
+    }
+
+    static class StableState extends BaseState {
+        @Override public String name() { return "Stable"; }
+
+        @Override public void treat(Patient p) {
+            LOGGER.log("Supportive care for " + p.getName() + " (Stable).");
+            // mild adjustments
+            Vitals v = p.getVitals();
+            v.oxygen = Math.min(100, v.oxygen + 1);
+            v.systolicBP = Math.min(125, v.systolicBP + 2);
+            p.setVitals(v);
+        }
+
+        @Override public void observe(Patient p) {
+            LOGGER.log("Routine observation for " + p.getName() + " (Stable).");
+        }
+
+        @Override public void discharge(Patient p) {
+            // overriding default to allow discharge check and actual discharge
+            LOGGER.log("Attempting discharge for " + p.getName() + " (Stable).");
+            p.setState(new DischargedState());
+        }
+    }
+
+    static class DischargedState extends BaseState {
+        @Override public String name() { return "Discharged"; }
+
+        @Override public void treat(Patient p) {
+            LOGGER.log("Cannot treat " + p.getName() + " — patient already discharged.");
+        }
+
+        @Override public void observe(Patient p) {
+            LOGGER.log("Observing discharged patient record: " + p.getName());
+        }
+
+        @Override public void transfer(Patient p, String ward) {
+            LOGGER.log("Cannot transfer — patient discharged: " + p.getName());
+            System.out.println("Patient already discharged.");
+        }
+
+        @Override public void discharge(Patient p) {
+            LOGGER.log("Already discharged: " + p.getName());
+        }
+    }
+
+    static class DeceasedState extends BaseState {
+        @Override public String name() { return "Deceased"; }
+
+        @Override public void treat(Patient p) {
+            LOGGER.log("Cannot treat — patient deceased: " + p.getName());
+        }
+
+        @Override public void observe(Patient p) {
+            LOGGER.log("Observing deceased record: " + p.getName());
+        }
+
+        @Override public void discharge(Patient p) {
+            LOGGER.log("Processing final paperwork for deceased patient: " + p.getName());
+            // remain deceased
+        }
+    }
+
+    // -------------------------
+    // Vitals Simulator (threaded)
+    // -------------------------
+    static class VitalsSimulator {
+        private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        private final Map<String, Patient> patients;
+        private final Random rnd = new Random();
+
+        VitalsSimulator(Map<String, Patient> patients) {
+            this.patients = patients;
+        }
+
+        public void start(int intervalSeconds) {
+            scheduler.scheduleAtFixedRate(this::tick, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
+            LOGGER.log("Vitals simulator started (" + intervalSeconds + "s interval).");
+        }
+
+        public void stop() {
+            scheduler.shutdownNow();
+            LOGGER.log("Vitals simulator stopped.");
+        }
+
+        private void tick() {
+            for (Patient p : patients.values()) {
+                // small random drift applied to vitals; larger drift if in Critical
+                Vitals v = p.getVitals();
+                double factor = (p.getState() instanceof CriticalState) ? 1.5 : 1.0;
+                v.heartRate = clamp(v.heartRate + (rnd.nextGaussian() * 3 * factor), 30, 200);
+                v.systolicBP = clamp(v.systolicBP + (rnd.nextGaussian() * 4 * factor), 50, 220);
+                v.diastolicBP = clamp(v.diastolicBP + (rnd.nextGaussian() * 3 * factor), 30, 140);
+                v.oxygen = clamp(v.oxygen + (rnd.nextGaussian() * 1.5 * -factor), 50, 100); // slight downward drift
+                v.temperature = clamp(v.temperature + (rnd.nextGaussian() * 0.3), 34, 42);
+                p.setVitals(v);
+            }
+        }
+
+        private double clamp(double v, double lo, double hi) {
+            return Math.max(lo, Math.min(hi, v));
+        }
+    }
+
+    // -------------------------
+    // Console UI
+    // -------------------------
+    static class ConsoleApp {
+        private final Scanner sc = new Scanner(System.in);
+        private final Map<String, Patient> patients = new LinkedHashMap<>();
+        private final VitalsSimulator simulator;
+        private int idCounter = 1;
+
+        ConsoleApp() {
+            simulator = new VitalsSimulator(patients);
+        }
+
+        public void seedDemoPatients() {
+            addPatient("Alice", new Vitals(85, 120, 78, 98, 36.7), new StableState());
+            addPatient("Bob", new Vitals(130, 85, 55, 88, 39.2), new CriticalState());
+            addPatient("Carol", new Vitals(95, 110, 70, 92, 37.1), new RecoveringState());
+            addPatient("Dave", new Vitals(72, 115, 75, 97, 36.5), new StableState());
+            LOGGER.log("Demo patients seeded.");
+        }
+
+        private String nextId() { return String.format("P%03d", idCounter++); }
+
+        public void addPatient(String name, Vitals v, PatientState initialState) {
+            String id = nextId();
+            Patient p = new Patient(id, name, v, initialState);
+            patients.put(id, p);
+            LOGGER.log("Added patient " + name + " (" + id + ") state=" + initialState.name());
+        }
+
+        public void run() {
+            System.out.println("=== Hospital Patient State Simulator ===");
+            seedDemoPatients();
+            simulator.start(5); // tick every 5 seconds
+
+            boolean run = true;
+            while (run) {
+                printMenu();
+                String cmd = sc.nextLine().trim();
+                switch (cmd) {
+                    case "1": listPatients(); break;
+                    case "2": createPatientInteractive(); break;
+                    case "3": showPatientDetails(); break;
+                    case "4": applyActionInteractive(); break;
+                    case "5": manualVitalsUpdate(); break;
+                    case "6": simulateOnce(); break;
+                    case "7": showLogs(); break;
+                    case "0": run = false; break;
+                    default: System.out.println("Unknown option."); break;
+                }
+            }
+            shutdown();
+        }
+
+        private void printMenu() {
+            System.out.println("\nMenu:");
+            System.out.println("1. List patients");
+            System.out.println("2. Create new patient");
+            System.out.println("3. Show patient details");
+            System.out.println("4. Apply action to patient (treat/observe/transfer/discharge/codeblue)");
+            System.out.println("5. Manually set vitals for a patient");
+            System.out.println("6. Run one simulation tick now");
+            System.out.println("7. Show recent logs");
+            System.out.println("0. Exit");
+            System.out.print("Choice: ");
+        }
+
+        private void listPatients() {
+            System.out.println("\nPatients:");
+            for (Patient p : patients.values()) {
+                System.out.printf("%s %s - %s - %s\n", p.getId(), p.getName(), p.getState().name(), p.getVitals().toString());
+            }
+        }
+
+        private Patient findPatientByIdOrName(String key) {
+            key = key.trim();
+            if (patients.containsKey(key)) return patients.get(key);
+            for (Patient p : patients.values()) {
+                if (p.getName().equalsIgnoreCase(key)) return p;
+            }
+            return null;
+        }
+
+        private void createPatientInteractive() {
+            System.out.print("Patient name: ");
+            String name = sc.nextLine().trim();
+            System.out.print("Initial heart rate (bpm, default 80): ");
+            double hr = parseDoubleOrDefault(sc.nextLine().trim(), 80);
+            System.out.print("Systolic BP (default 120): ");
+            double sys = parseDoubleOrDefault(sc.nextLine().trim(), 120);
+            System.out.print("Diastolic BP (default 78): ");
+            double dia = parseDoubleOrDefault(sc.nextLine().trim(), 78);
+            System.out.print("SpO2 % (default 98): ");
+            double oxy = parseDoubleOrDefault(sc.nextLine().trim(), 98);
+            System.out.print("Temp °C (default 36.7): ");
+            double temp = parseDoubleOrDefault(sc.nextLine().trim(), 36.7);
+
+            Vitals v = new Vitals(hr, sys, dia, oxy, temp);
+            // choose default state based on vitals
+            PatientState init = (oxy < 90 || sys < 90) ? new CriticalState() : new StableState();
+            addPatient(name, v, init);
+        }
+
+        private void showPatientDetails() {
+            System.out.print("Enter patient id or name: ");
+            String key = sc.nextLine().trim();
+            Patient p = findPatientByIdOrName(key);
+            if (p == null) { System.out.println("Patient not found."); return; }
+            p.printSummary();
+        }
+
+        private void applyActionInteractive() {
+            System.out.print("Enter patient id or name: ");
+            String key = sc.nextLine().trim();
+            Patient p = findPatientByIdOrName(key);
+            if (p == null) { System.out.println("Patient not found."); return; }
+            System.out.println("Actions: treat / observe / transfer / discharge / codeblue");
+            System.out.print("Action: ");
+            String action = sc.nextLine().trim().toLowerCase();
+            switch (action) {
+                case "treat": p.treat(); break;
+                case "observe": p.observe(); break;
+                case "transfer":
+                    System.out.print("Destination ward: "); String ward = sc.nextLine().trim();
+                    p.transfer(ward); break;
+                case "discharge": p.discharge(); break;
+                case "codeblue": p.codeBlue(); break;
+                default: System.out.println("Unknown action."); break;
+            }
+        }
+
+        private void manualVitalsUpdate() {
+            System.out.print("Enter patient id or name: ");
+            String key = sc.nextLine().trim();
+            Patient p = findPatientByIdOrName(key);
+            if (p == null) { System.out.println("Patient not found."); return; }
+            System.out.print("HR (bpm): "); double hr = parseDoubleOrDefault(sc.nextLine().trim(), p.getVitals().heartRate);
+            System.out.print("Systolic: "); double sys = parseDoubleOrDefault(sc.nextLine().trim(), p.getVitals().systolicBP);
+            System.out.print("Diastolic: "); double dia = parseDoubleOrDefault(sc.nextLine().trim(), p.getVitals().diastolicBP);
+            System.out.print("SpO2: "); double oxy = parseDoubleOrDefault(sc.nextLine().trim(), p.getVitals().oxygen);
+            System.out.print("Temp: "); double tmp = parseDoubleOrDefault(sc.nextLine().trim(), p.getVitals().temperature);
+            p.setVitals(new Vitals(hr, sys, dia, oxy, tmp));
+        }
+
+        private void simulateOnce() {
+            simulator.tick();
+            System.out.println("One simulation tick completed.");
+        }
+
+        private void showLogs() {
+            List<String> lines = LOGGER.recent(30);
+            System.out.println("\n--- Recent Logs ---");
+            for (String l : lines) System.out.println(l);
+        }
+
+        private void shutdown() {
+            System.out.println("Shutting down simulator...");
+            simulator.stop();
+            System.out.println("Goodbye.");
+        }
+
+        private double parseDoubleOrDefault(String s, double def) {
+            try { return Double.parseDouble(s); } catch (Exception e) { return def; }
+        }
+    }
+
+    // -------------------------
+    // Main
+    // -------------------------
+    public static void main(String[] args) {
+        ConsoleApp app = new ConsoleApp();
+        app.run();
+    }
+}
