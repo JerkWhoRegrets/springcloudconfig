@@ -1,0 +1,951 @@
+/*
+ * DesignPatternsDemo.java
+ * A comprehensive Java demonstration of multiple design patterns.
+ * Includes: Singleton, Factory Method, Abstract Factory, Builder, Prototype,
+ * Adapter, Bridge, Composite, Decorator, Facade, Flyweight, Proxy, Chain of Responsibility,
+ * Command, Interpreter, Iterator, Mediator, Memento, Observer, State, Strategy,
+ * Template Method, Visitor.
+ */
+
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+// ========================================
+// 1. SINGLETON PATTERN
+// ========================================
+class Singleton {
+    private static volatile Singleton instance;
+    private static final Object lock = new Object();
+    private String data;
+
+    private Singleton() {
+        this.data = "Singleton Instance Data @ " + System.currentTimeMillis();
+    }
+
+    public static Singleton getInstance() {
+        if (instance == null) {
+            synchronized (lock) {
+                if (instance == null) {
+                    instance = new Singleton();
+                }
+            }
+        }
+        return instance;
+    }
+
+    public String getData() { return data; }
+    public void setData(String data) { this.data = data; }
+}
+
+// ========================================
+// 2. FACTORY METHOD PATTERN
+// ========================================
+abstract class Product {
+    abstract void use();
+}
+
+class ConcreteProductA extends Product {
+    @Override void use() { System.out.println("Using Product A"); }
+}
+
+class ConcreteProductB extends Product {
+    @Override void use() { System.out.println("Using Product B"); }
+}
+
+abstract class Creator {
+    abstract Product createProduct();
+    public void anOperation() {
+        Product product = createProduct();
+        product.use();
+    }
+}
+
+class ConcreteCreatorA extends Creator {
+    @Override Product createProduct() { return new ConcreteProductA(); }
+}
+
+class ConcreteCreatorB extends Creator {
+    @Override Product createProduct() { return new ConcreteProductB(); }
+}
+
+// ========================================
+// 3. ABSTRACT FACTORY PATTERN
+// ========================================
+interface Button { void render(); }
+interface Checkbox { void check(); }
+
+class WindowsButton implements Button {
+    public void render() { System.out.println("Render Windows Button"); }
+}
+
+class MacButton implements Button {
+    public void render() { System.out.println("Render Mac Button"); }
+}
+
+class WindowsCheckbox implements Checkbox {
+    public void check() { System.out.println("Check Windows Checkbox"); }
+}
+
+class MacCheckbox implements Checkbox {
+    public void check() { System.out.println("Check Mac Checkbox"); }
+}
+
+interface GUIFactory {
+    Button createButton();
+    Checkbox createCheckbox();
+}
+
+class WindowsFactory implements GUIFactory {
+    public Button createButton() { return new WindowsButton(); }
+    public Checkbox createCheckbox() { return new WindowsCheckbox(); }
+}
+
+class MacFactory implements GUIFactory {
+    public Button createButton() { return new MacButton(); }
+    public Checkbox createCheckbox() { return new MacCheckbox(); }
+}
+
+// ========================================
+// 4. BUILDER PATTERN
+// ========================================
+class Computer {
+    private String CPU;
+    private String RAM;
+    private String storage;
+    private String GPU;
+    private boolean hasBluetooth;
+    private boolean hasWiFi;
+
+    private Computer(ComputerBuilder builder) {
+        this.CPU = builder.CPU;
+        this.RAM = builder.RAM;
+        this.storage = builder.storage;
+        this.GPU = builder.GPU;
+        this.hasBluetooth = builder.hasBluetooth;
+        this.hasWiFi = builder.hasWiFi;
+    }
+
+    @Override
+    public String toString() {
+        return "Computer [CPU=" + CPU + ", RAM=" + RAM + ", Storage=" + storage +
+               ", GPU=" + GPU + ", Bluetooth=" + hasBluetooth + ", WiFi=" + hasWiFi + "]";
+    }
+
+    static class ComputerBuilder {
+        private String CPU;
+        private String RAM;
+        private String storage;
+        private String GPU;
+        private boolean hasBluetooth;
+        private boolean hasWiFi;
+
+        public ComputerBuilder setCPU(String CPU) { this.CPU = CPU; return this; }
+        public ComputerBuilder setRAM(String RAM) { this.RAM = RAM; return this; }
+        public ComputerBuilder setStorage(String storage) { this.storage = storage; return this; }
+        public ComputerBuilder setGPU(String GPU) { this.GPU = GPU; return this; }
+        public ComputerBuilder enableBluetooth() { this.hasBluetooth = true; return this; }
+        public ComputerBuilder enableWiFi() { this.hasWiFi = true; return this; }
+        public Computer build() { return new Computer(this); }
+    }
+}
+
+// ========================================
+// 5. PROTOTYPE PATTERN
+// ========================================
+abstract class Shape implements Cloneable {
+    private String id;
+    protected String type;
+
+    abstract void draw();
+
+    public String getType() { return type; }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    @Override
+    public Object clone() {
+        try {
+            return super.clone();
+        } catch (CloneNotSupportedException e) {
+            return null;
+        }
+    }
+}
+
+class Rectangle extends Shape {
+    public Rectangle() { type = "Rectangle"; }
+    @Override void draw() { System.out.println("Drawing Rectangle"); }
+}
+
+class Circle extends Shape {
+    public Circle() { type = "Circle"; }
+    @Override void draw() { System.out.println("Drawing Circle"); }
+}
+
+class ShapeCache {
+    private static Map<String, Shape> shapeMap = new HashMap<>();
+    static {
+        Circle circle = new Circle();
+        circle.setId("1");
+        shapeMap.put(circle.getId(), circle);
+
+        Rectangle rectangle = new Rectangle();
+        rectangle.setId("2");
+        shapeMap.put(rectangle.getId(), rectangle);
+    }
+
+    public static Shape getShape(String shapeId) {
+        Shape cachedShape = shapeMap.get(shapeId);
+        return (Shape) cachedShape.clone();
+    }
+}
+
+// ========================================
+// 6. ADAPTER PATTERN
+// ========================================
+interface MediaPlayer { void play(String audioType, String fileName); }
+
+interface AdvancedMediaPlayer {
+    void playVlc(String fileName);
+    void playMp4(String fileName);
+}
+
+class VlcPlayer implements AdvancedMediaPlayer {
+    public void playVlc(String fileName) { System.out.println("Playing vlc file: " + fileName); }
+    public void playMp4(String fileName) {}
+}
+
+class Mp4Player implements AdvancedMediaPlayer {
+    public void playVlc(String fileName) {}
+    public void playMp4(String fileName) { System.out.println("Playing mp4 file: " + fileName); }
+}
+
+class MediaAdapter implements MediaPlayer {
+    AdvancedMediaPlayer advancedMusicPlayer;
+
+    public MediaAdapter(String audioType) {
+        if (audioType.equalsIgnoreCase("vlc")) {
+            advancedMusicPlayer = new VlcPlayer();
+        } else if (audioType.equalsIgnoreCase("mp4")) {
+            advancedMusicPlayer = new Mp4Player();
+        }
+    }
+
+    public void play(String audioType, String fileName) {
+        if (audioType.equalsIgnoreCase("vlc")) {
+            advancedMusicPlayer.playVlc(fileName);
+        } else if (audioType.equalsIgnoreCase("mp4")) {
+            advancedMusicPlayer.playMp4(fileName);
+        }
+    }
+}
+
+class AudioPlayer implements MediaPlayer {
+    MediaAdapter mediaAdapter;
+
+    public void play(String audioType, String fileName) {
+        if (audioType.equalsIgnoreCase("mp3")) {
+            System.out.println("Playing mp3 file: " + fileName);
+        } else if (audioType.equalsIgnoreCase("vlc") || audioType.equalsIgnoreCase("mp4")) {
+            mediaAdapter = new MediaAdapter(audioType);
+            mediaAdapter.play(audioType, fileName);
+        } else {
+            System.out.println("Invalid media. " + audioType + " format not supported");
+        }
+    }
+}
+
+// ========================================
+// 7. BRIDGE PATTERN
+// ========================================
+interface DrawAPI {
+    void drawCircle(int radius, int x, int y);
+}
+
+class RedCircle implements DrawAPI {
+    public void drawCircle(int radius, int x, int y) {
+        System.out.println("Drawing Circle [color: red, radius: " + radius + ", x: " + x + ", y: " + y + "]");
+    }
+}
+
+class GreenCircle implements DrawAPI {
+    public void drawCircle(int radius, int x, int y) {
+        System.out.println("Drawing Circle [color: green, radius: " + radius + ", x: " + x + ", y: " + y + "]");
+    }
+}
+
+abstract class AbstractShape {
+    protected DrawAPI drawAPI;
+    protected AbstractShape(DrawAPI drawAPI) { this.drawAPI = drawAPI; }
+    abstract void draw();
+}
+
+class CircleBridge extends AbstractShape {
+    private int x, y, radius;
+    public CircleBridge(int x, int y, int radius, DrawAPI drawAPI) {
+        super(drawAPI);
+        this.x = x;
+        this.y = y;
+        this.radius = radius;
+    }
+    public void draw() { drawAPI.drawCircle(radius, x, y); }
+}
+
+// ========================================
+// 8. COMPOSITE PATTERN
+// ========================================
+abstract class Employee {
+    protected String name;
+    protected double salary;
+    public Employee(String name, double salary) {
+        this.name = name;
+        this.salary = salary;
+    }
+    public abstract void add(Employee e);
+    public abstract void remove(Employee e);
+    public abstract void print();
+}
+
+class Developer extends Employee {
+    public Developer(String name, double salary) { super(name, salary); }
+    public void add(Employee e) {}
+    public void remove(Employee e) {}
+    public void print() { System.out.println("Developer: " + name + ", Salary: " + salary); }
+}
+
+class Manager extends Employee {
+    private List<Employee> subordinates = new ArrayList<>();
+    public Manager(String name, double salary) { super(name, salary); }
+    public void add(Employee e) { subordinates.add(e); }
+    public void remove(Employee e) { subordinates.remove(e); }
+    public void print() {
+        System.out.println("Manager: " + name + ", Salary: " + salary);
+        for (Employee e : subordinates) e.print();
+    }
+}
+
+// ========================================
+// 9. DECORATOR PATTERN
+// ========================================
+interface Coffee { double cost(); String description(); }
+
+class SimpleCoffee implements Coffee {
+    public double cost() { return 1.0; }
+    public String description() { return "Simple Coffee"; }
+}
+
+abstract class CoffeeDecorator implements Coffee {
+    protected Coffee decoratedCoffee;
+    public CoffeeDecorator(Coffee coffee) { this.decoratedCoffee = coffee; }
+}
+
+class MilkDecorator extends CoffeeDecorator {
+    public MilkDecorator(Coffee coffee) { super(coffee); }
+    public double cost() { return decoratedCoffee.cost() + 0.5; }
+    public String description() { return decoratedCoffee.description() + ", Milk"; }
+}
+
+class SugarDecorator extends CoffeeDecorator {
+    public SugarDecorator(Coffee coffee) { super(coffee); }
+    public double cost() { return decoratedCoffee.cost() + 0.2; }
+    public String description() { return decoratedCoffee.description() + ", Sugar"; }
+}
+
+// ========================================
+// 10. FACADE PATTERN
+// ========================================
+class CPU { public void freeze() { System.out.println("CPU Freeze"); } public void execute() { System.out.println("CPU Execute"); } }
+class Memory { public void load() { System.out.println("Memory Load"); } }
+class HardDrive { public void read() { System.out.println("HardDrive Read"); } }
+
+class ComputerFacade {
+    private CPU cpu;
+    private Memory memory;
+    private HardDrive hardDrive;
+
+    public ComputerFacade() {
+        this.cpu = new CPU();
+        this.memory = new Memory();
+        this.hardDrive = new HardDrive();
+    }
+
+    public void start() {
+        cpu.freeze();
+        memory.load();
+        hardDrive.read();
+        cpu.execute();
+    }
+}
+
+// ========================================
+// 11. FLYWEIGHT PATTERN
+// ========================================
+interface TreeType {
+    void display(int x, int y);
+}
+
+class TreeTypeImpl implements TreeType {
+    private String name;
+    private String color;
+    private String texture;
+
+    public TreeTypeImpl(String name, String color, String texture) {
+        this.name = name;
+        this.color = color;
+        this.texture = texture;
+    }
+
+    public void display(int x, int y) {
+        System.out.println("Tree: " + name + " at (" + x + "," + y + ") color: " + color);
+    }
+}
+
+class TreeFactory {
+    private static Map<String, TreeType> treeTypes = new ConcurrentHashMap<>();
+
+    public static TreeType getTreeType(String name, String color, String texture) {
+        String key = name + "-" + color + "-" + texture;
+        return treeTypes.computeIfAbsent(key, k -> new TreeTypeImpl(name, color, texture));
+    }
+}
+
+class Tree {
+    private int x, y;
+    private TreeType type;
+
+    public Tree(int x, int y, TreeType type) {
+        this.x = x;
+        this.y = y;
+        this.type = type;
+    }
+
+    public void display() { type.display(x, y); }
+}
+
+// ========================================
+// 12. PROXY PATTERN
+// ========================================
+interface Image {
+    void display();
+}
+
+class RealImage implements Image {
+    private String filename;
+    public RealImage(String filename) {
+        this.filename = filename;
+        loadFromDisk();
+    }
+    private void loadFromDisk() { System.out.println("Loading " + filename); }
+    public void display() { System.out.println("Displaying " + filename); }
+}
+
+class ProxyImage implements Image {
+    private RealImage realImage;
+    private String filename;
+
+    public ProxyImage(String filename) { this.filename = filename; }
+
+    public void display() {
+        if (realImage == null) {
+            realImage = new RealImage(filename);
+        }
+        realImage.display();
+    }
+}
+
+// ========================================
+// 13. CHAIN OF RESPONSIBILITY PATTERN
+// ========================================
+abstract class Logger {
+    public static int INFO = 1;
+    public static int DEBUG = 2;
+    public static int ERROR = 3;
+    protected int level;
+    private Logger nextLogger;
+
+    public void setNextLogger(Logger nextLogger) { this.nextLogger = nextLogger; }
+
+    public void logMessage(int level, String message) {
+        if (this.level <= level) {
+            write(message);
+        }
+        if (nextLogger != null) {
+            nextLogger.logMessage(level, message);
+        }
+    }
+
+    abstract protected void write(String message);
+}
+
+class ConsoleLogger extends Logger {
+    public ConsoleLogger(int level) { this.level = level; }
+    protected void write(String message) { System.out.println("Console::Logger: " + message); }
+}
+
+class FileLogger extends Logger {
+    public FileLogger(int level) { this.level = level; }
+    protected void write(String message) { System.out.println("File::Logger: " + message); }
+}
+
+class ErrorLogger extends Logger {
+    public ErrorLogger(int level) { this.level = level; }
+    protected void write(String message) { System.out.println("Error Console::Logger: " + message); }
+}
+
+// ========================================
+// 14. COMMAND PATTERN
+// ========================================
+interface Command { void execute(); }
+
+class Light {
+    public void turnOn() { System.out.println("Light is ON"); }
+    public void turnOff() { System.out.println("Light is OFF"); }
+}
+
+class LightOnCommand implements Command {
+    private Light light;
+    public LightOnCommand(Light light) { this.light = light; }
+    public void execute() { light.turnOn(); }
+}
+
+class LightOffCommand implements Command {
+    private Light light;
+    public LightOffCommand(Light light) { this.light = light; }
+    public void execute() { light.turnOff(); }
+}
+
+class RemoteControl {
+    private Command command;
+    public void setCommand(Command command) { this.command = command; }
+    public void pressButton() { command.execute(); }
+}
+
+// ========================================
+// 15. INTERPRETER PATTERN
+// ========================================
+interface Expression {
+    boolean interpret(String context);
+}
+
+class TerminalExpression implements Expression {
+    private String data;
+    public TerminalExpression(String data) { this.data = data; }
+    public boolean interpret(String context) { return context.contains(data); }
+}
+
+class OrExpression implements Expression {
+    private Expression expr1;
+    private Expression expr2;
+    public OrExpression(Expression expr1, Expression expr2) {
+        this.expr1 = expr1;
+        this.expr2 = expr2;
+    }
+    public boolean interpret(String context) { return expr1.interpret(context) || expr2.interpret(context); }
+}
+
+class AndExpression implements Expression {
+    private Expression expr1;
+    private Expression expr2;
+    public AndExpression(Expression expr1, Expression expr2) {
+        this.expr1 = expr1;
+        this.expr2 = expr2;
+    }
+    public boolean interpret(String context) { return expr1.interpret(context) && expr2.interpret(context); }
+}
+
+// ========================================
+// 16. ITERATOR PATTERN
+// ========================================
+interface Iterator<T> {
+    boolean hasNext();
+    T next();
+}
+
+interface Container<T> {
+    Iterator<T> getIterator();
+}
+
+class NameRepository implements Container<String> {
+    public String[] names = {"Alice", "Bob", "Charlie", "David"};
+
+    public Iterator<String> getIterator() {
+        return new NameIterator();
+    }
+
+    private class NameIterator implements Iterator<String> {
+        int index;
+        public boolean hasNext() { return index < names.length; }
+        public String next() {
+            if (this.hasNext()) {
+                return names[index++];
+            }
+            return null;
+        }
+    }
+}
+
+// ========================================
+// 17. MEDIATOR PATTERN
+// ========================================
+interface ChatMediator {
+    void sendMessage(String msg, User user);
+    void addUser(User user);
+}
+
+class ChatMediatorImpl implements ChatMediator {
+    private List<User> users = new ArrayList<>();
+    public void addUser(User user) { users.add(user); }
+    public void sendMessage(String msg, User user) {
+        for (User u : users) {
+            if (u != user) {
+                u.receive(msg);
+            }
+        }
+    }
+}
+
+abstract class User {
+    protected ChatMediator mediator;
+    protected String name;
+    public User(ChatMediator mediator, String name) {
+        this.mediator = mediator;
+        this.name = name;
+    }
+    abstract void send(String msg);
+    abstract void receive(String msg);
+}
+
+class UserImpl extends User {
+    public UserImpl(ChatMediator mediator, String name) { super(mediator, name); }
+    public void send(String msg) {
+        System.out.println(this.name + " sends: " + msg);
+        mediator.sendMessage(msg, this);
+    }
+    public void receive(String msg) {
+        System.out.println(this.name + " received: " + msg);
+    }
+}
+
+// ========================================
+// 18. MEMENTO PATTERN
+// ========================================
+class Originator {
+    private String state;
+    public void setState(String state) { this.state = state; }
+    public String getState() { return state; }
+    public Memento saveStateToMemento() { return new Memento(state); }
+    public void getStateFromMemento(Memento memento) { state = memento.getState(); }
+}
+
+class Memento {
+    private String state;
+    public Memento(String state) { this.state = state; }
+    public String getState() { return state; }
+}
+
+class CareTaker {
+    private List<Memento> mementoList = new ArrayList<>();
+    public void add(Memento state) { mementoList.add(state); }
+    public Memento get(int index) { return mementoList.get(index); }
+}
+
+// ========================================
+// 19. OBSERVER PATTERN
+// ========================================
+interface Observer {
+    void update();
+}
+
+class Subject {
+    private List<Observer> observers = new ArrayList<>();
+    private int state;
+    public int getState() { return state; }
+    public void setState(int state) {
+        this.state = state;
+        notifyAllObservers();
+    }
+    public void attach(Observer observer) { observers.add(observer); }
+    public void notifyAllObservers() {
+        for (Observer observer : observers) {
+            observer.update();
+        }
+    }
+}
+
+class BinaryObserver implements Observer {
+    private Subject subject;
+    public BinaryObserver(Subject subject) {
+        this.subject = subject;
+        this.subject.attach(this);
+    }
+    public void update() {
+        System.out.println("Binary String: " + Integer.toBinaryString(subject.getState()));
+    }
+}
+
+// ========================================
+// 20. STATE PATTERN
+// ========================================
+interface State {
+    void doAction(Context context);
+}
+
+class StartState implements State {
+    public void doAction(Context context) {
+        System.out.println("Player is in start state");
+        context.setState(this);
+    }
+    public String toString() { return "Start State"; }
+}
+
+class StopState implements State {
+    public void doAction(Context context) {
+        System.out.println("Player is in stop state");
+        context.setState(this);
+    }
+    public String toString() { return "Stop State"; }
+}
+
+class Context {
+    private State state;
+    public Context() { state = null; }
+    public void setState(State state) { this.state = state; }
+    public State getState() { return state; }
+}
+
+// ========================================
+// 21. STRATEGY PATTERN
+// ========================================
+interface Strategy {
+    int doOperation(int num1, int num2);
+}
+
+class OperationAdd implements Strategy {
+    public int doOperation(int num1, int num2) { return num1 + num2; }
+}
+
+class OperationSubtract implements Strategy {
+    public int doOperation(int num1, int num2) { return num1 - num2; }
+}
+
+class ContextStrategy {
+    private Strategy strategy;
+    public ContextStrategy(Strategy strategy) { this.strategy = strategy; }
+    public int executeStrategy(int num1, int num2) { return strategy.doOperation(num1, num2); }
+}
+
+// ========================================
+// 22. TEMPLATE METHOD PATTERN
+// ========================================
+abstract class Game {
+    abstract void initialize();
+    abstract void startPlay();
+    abstract void endPlay();
+
+    public final void play() {
+        initialize();
+        startPlay();
+        endPlay();
+    }
+}
+
+class Cricket extends Game {
+    void initialize() { System.out.println("Cricket Game Initialized"); }
+    void startPlay() { System.out.println("Cricket Game Started"); }
+    void endPlay() { System.out.println("Cricket Game Finished"); }
+}
+
+class Football extends Game {
+    void initialize() { System.out.println("Football Game Initialized"); }
+    void startPlay() { System.out.println("Football Game Started"); }
+    void endPlay() { System.out.println("Football Game Finished"); }
+}
+
+// ========================================
+// 23. VISITOR PATTERN
+// ========================================
+interface ComputerPart {
+    void accept(ComputerPartVisitor visitor);
+}
+
+class Keyboard implements ComputerPart {
+    public void accept(ComputerPartVisitor visitor) { visitor.visit(this); }
+}
+
+class Mouse implements ComputerPart {
+    public void accept(ComputerPartVisitor visitor) { visitor.visit(this); }
+}
+
+class Monitor implements ComputerPart {
+    public void accept(ComputerPartVisitor visitor) { visitor.visit(this); }
+}
+
+class Computer implements ComputerPart {
+    ComputerPart[] parts;
+    public Computer() {
+        parts = new ComputerPart[] { new Mouse(), new Keyboard(), new Monitor() };
+    }
+    public void accept(ComputerPartVisitor visitor) {
+        for (ComputerPart part : parts) {
+            part.accept(visitor);
+        }
+        visitor.visit(this);
+    }
+}
+
+interface ComputerPartVisitor {
+    void visit(Computer computer);
+    void visit(Mouse mouse);
+    void visit(Keyboard keyboard);
+    void visit(Monitor monitor);
+}
+
+class ComputerPartDisplayVisitor implements ComputerPartVisitor {
+    public void visit(Computer computer) { System.out.println("Displaying Computer."); }
+    public void visit(Mouse mouse) { System.out.println("Displaying Mouse."); }
+    public void visit(Keyboard keyboard) { System.out.println("Displaying Keyboard."); }
+    public void visit(Monitor monitor) { System.out.println("Displaying Monitor."); }
+}
+
+// ========================================
+// MAIN DEMO CLASS
+// ========================================
+public class DesignPatternsDemo {
+    public static void main(String[] args) {
+        System.out.println("=== Design Patterns Demo ===");
+
+        // 1. Singleton
+        Singleton s1 = Singleton.getInstance();
+        Singleton s2 = Singleton.getInstance();
+        System.out.println("Singleton same instance: " + (s1 == s2));
+
+        // 2. Factory Method
+        Creator creatorA = new ConcreteCreatorA();
+        creatorA.anOperation();
+
+        // 3. Abstract Factory
+        GUIFactory windowsFactory = new WindowsFactory();
+        Button winButton = windowsFactory.createButton();
+        winButton.render();
+
+        // 4. Builder
+        Computer gamingPC = new Computer.ComputerBuilder()
+                .setCPU("Intel i9")
+                .setRAM("32GB")
+                .setStorage("1TB SSD")
+                .setGPU("RTX 4090")
+                .enableBluetooth()
+                .enableWiFi()
+                .build();
+        System.out.println(gamingPC);
+
+        // 5. Prototype
+        Shape circle = ShapeCache.getShape("1");
+        circle.draw();
+
+        // 6. Adapter
+        AudioPlayer audioPlayer = new AudioPlayer();
+        audioPlayer.play("mp3", "song.mp3");
+        audioPlayer.play("vlc", "movie.vlc");
+
+        // 7. Bridge
+        AbstractShape redCircle = new CircleBridge(100, 100, 10, new RedCircle());
+        redCircle.draw();
+
+        // 8. Composite
+        Employee dev1 = new Developer("John", 5000);
+        Manager manager = new Manager("Jane", 10000);
+        manager.add(dev1);
+        manager.print();
+
+        // 9. Decorator
+        Coffee coffee = new MilkDecorator(new SugarDecorator(new SimpleCoffee()));
+        System.out.println(coffee.description() + " $" + coffee.cost());
+
+        // 10. Facade
+        ComputerFacade computer = new ComputerFacade();
+        computer.start();
+
+        // 11. Flyweight
+        TreeType oak = TreeFactory.getTreeType("Oak", "Green", "Rough");
+        Tree tree1 = new Tree(10, 20, oak);
+        tree1.display();
+
+        // 12. Proxy
+        Image image = new ProxyImage("photo.jpg");
+        image.display(); // loads
+        image.display(); // from cache
+
+        // 13. Chain of Responsibility
+        Logger chain = getChainOfLoggers();
+        chain.logMessage(Logger.INFO, "This is an info.");
+
+        // 14. Command
+        Light light = new Light();
+        Command lightOn = new LightOnCommand(light);
+        RemoteControl remote = new RemoteControl();
+        remote.setCommand(lightOn);
+        remote.pressButton();
+
+        // 15. Interpreter
+        Expression isJava = new TerminalExpression("Java");
+        System.out.println("Context has Java: " + isJava.interpret("Learning Java"));
+
+        // 16. Iterator
+        NameRepository namesRepo = new NameRepository();
+        for (Iterator<String> iter = namesRepo.getIterator(); iter.hasNext();) {
+            String name = iter.next();
+            System.out.println("Name: " + name);
+        }
+
+        // 17. Mediator
+        ChatMediator mediator = new ChatMediatorImpl();
+        User user1 = new UserImpl(mediator, "Alice");
+        mediator.addUser(user1);
+        user1.send("Hi!");
+
+        // 18. Memento
+        Originator originator = new Originator();
+        CareTaker careTaker = new CareTaker();
+        originator.setState("State #1");
+        careTaker.add(originator.saveStateToMemento());
+        originator.setState("State #2");
+        originator.getStateFromMemento(careTaker.get(0));
+        System.out.println("Current State: " + originator.getState());
+
+        // 19. Observer
+        Subject subject = new Subject();
+        new BinaryObserver(subject);
+        subject.setState(5);
+
+        // 20. State
+        Context context = new Context();
+        StartState start = new StartState();
+        start.doAction(context);
+
+        // 21. Strategy
+        ContextStrategy addContext = new ContextStrategy(new OperationAdd());
+        System.out.println("10 + 5 = " + addContext.executeStrategy(10, 5));
+
+        // 22. Template Method
+        Game cricket = new Cricket();
+        cricket.play();
+
+        // 23. Visitor
+        ComputerPart computerPart = new Computer();
+        computerPart.accept(new ComputerPartDisplayVisitor());
+
+        System.out.println("=== Demo Complete ===");
+    }
+
+    private static Logger getChainOfLoggers() {
+        ErrorLogger errorLogger = new ErrorLogger(Logger.ERROR);
+        FileLogger fileLogger = new FileLogger(Logger.DEBUG);
+        ConsoleLogger consoleLogger = new ConsoleLogger(Logger.INFO);
+
+        errorLogger.setNextLogger(fileLogger);
+        fileLogger.setNextLogger(consoleLogger);
+
+        return errorLogger;
+    }
+}
